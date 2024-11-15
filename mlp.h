@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <vector>
+#include <algorithm>
 #include <random>
 #include <cstring>
 #include "common.h"
