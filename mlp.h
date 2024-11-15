@@ -35,7 +35,7 @@ public:
     // virtual double* forward(double *data, int num_data) = 0;         // Multiple input
     // virtual double* forward(vector<double*> data, int num_data) = 0; // Multiple input
     
-    static void match(double *res, double *ans, int output_size, int &val) // Single match
+    static void match(double *res, double *ans, int output_size, int &val); // Single match
     static void match(double *res, vector<double*> &ans, int output_size, int num_data, int &val); // Multiple match
 
     int set_batch_size(int new_batch_size);
