@@ -8,7 +8,7 @@ inline __device__ __host__ int ceil(int M, int N) {
     return (M + N - 1) / N;
 }
 
-inline double max_double(double x, double y) {
+inline __device__ __host__ double max_double(double x, double y) {
     return (x > y ? x : y);
 }
 
