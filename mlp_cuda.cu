@@ -295,6 +295,17 @@ void MLP_CUDA::copy_mlp_into_gpu() {
     timer().endCpuTimer();
 }
 
+void MLP_CUDA::free_gpu_memory() {
+    for (int i = 0; i < params.layer_count; i++) {
+        cudaFree(d_w[i]);
+        cudaFree(d_b[i]);
+        cudaFree(d_z[i]);
+        cudaFree(d_a[i]);
+        cudaFree(d_w_t[i]);
+    }
+    cudaFree(d_a[params.layer_count]);
+}
+
 void MLP_CUDA::__forward(vector<double*> &data, double *res, int start, int batch_size) {
     // Start timer
     timer().startCpuTimer();
