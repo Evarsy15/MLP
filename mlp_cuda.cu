@@ -4,7 +4,7 @@
 /*
     Auxiliary functions 
                         */
-inline int ceil(int M, int N) {
+inline __device__ __host__ int ceil(int M, int N) {
     return (M + N - 1) / N;
 }
 
