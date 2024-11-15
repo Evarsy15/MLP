@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
             // MLP::match(x, output_data[i], classes, cpu_val);
             int pos1 = distance(x, max_element(x, x + classes));
             int pos2 = distance(output_data[i], max_element(output_data[i], output_data[i] + classes));
-            val += pos1 == pos2;
+            cpu_val += pos1 == pos2;
             delete[] x;
         }
     }
