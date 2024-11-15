@@ -20,10 +20,12 @@ __global__ void Transpose(const double *A, double *A_T, const int M, const int N
     int col = blockDim.y * blockIdx.y + threadIdx.y;
 
     __shared__ double tile[TILE_SIZE][TILE_SIZE+1];
-    tile[threadIdx.y][threadIdx.x] = A[row][col];
+    if (row < M && col < N)
+        tile[threadIdx.y][threadIdx.x] = A[row*N + col];
     __syncthreads();
 
-    A_T[col][row] = tile[threadIdx.y][threadIdx.x];
+    if (row < M && col < N)
+        A_T[col*M + row] = tile[threadIdx.y][threadIdx.x];
 }
 
 /****
@@ -77,7 +79,7 @@ __device__ void BiasAdditionNaive(int B, int N, double *idata, double *bias, dou
         odata[pos] = idata[pos] + bias[col];
 }
 
-__device__ void BiasAddition(int B, int N, double *idata, double *bias, double *odata) {
+/* __device__ void BiasAddition(int B, int N, double *idata, double *bias, double *odata) {
     int row = blockDim.x * blockIdx.x + threadIdx.x;
     int col = blockDim.y * blockIdx.y + threadIdx.y;
     int pos = row * N + col;
@@ -94,8 +96,7 @@ __device__ void BiasAddition(int B, int N, double *idata, double *bias, double *
 
 
 __device__ void BiasAddition_c(int N, int B, double *idata, double *bias, double *odata) {
-    /* Column-wise bias addition : odata[i][k] = idata[i][k] + bias[i] */
-}
+} */
 
 /*
     ReLUActivation(M, N, idata, odata) applies ReLU activation function 
@@ -145,7 +146,7 @@ __device__ double ReduceMax(int N, double *src, double *aux) {
 
     // Find maximum element of the sub-array
     // ※ Read 'Reduction' in report.
-    for (; active > 1; active = ceil(active, 2);) {
+    for (; active > 1; active = ceil(active, 2)) {
         int stride = ceil(active, 2);
         if (offset + stride < active) {
             aux[offset] = max_double(aux[offset], aux[offset + stride]);
@@ -190,8 +191,8 @@ __device__ double ReduceSum(int N, double *src, double *aux) {
     __syncthreads();
 
     // Find sum of elements in sub-array
-    for (; active > 1; active = ceil(active, 2);) {
-        stride = ceil(active, 2);
+    for (; active > 1; active = ceil(active, 2)) {
+        int stride = ceil(active, 2);
         if (offset + stride < active) {
             aux[offset] += aux[offset + stride];
         }
@@ -239,10 +240,11 @@ void MLP_CUDA::allocate_gpu_memory() {
     // Start timer
     timer().startCpuTimer();
 
+    int batch_size = params.batch_size;
     for (int i = 0; i < params.layer_count; i++) {
         int input_dim  = (i > 0) ? params.layer_sizes[i-1] : params.input_size;
         int output_dim = params.layer_sizes[i];
-
+        
         double *d_layer_w, *d_layer_w_t, *d_layer_b, *d_layer_z, *d_layer_a;
         
         cudaMalloc((void **) &d_layer_w,   output_dim * input_dim  * sizeof(double));
@@ -258,6 +260,9 @@ void MLP_CUDA::allocate_gpu_memory() {
 
     for (int i = 0; i <= params.layer_count; i++) {
         int input_dim = (i > 0) ? params.layer_sizes[i-1] : params.input_size;
+        
+        double *d_layer_a;
+        
         cudaMalloc((void **) &d_layer_a, batch_size * input_dim * sizeof(double));
         d_a.push_back(d_layer_a);
     }
@@ -288,72 +293,6 @@ void MLP_CUDA::copy_mlp_into_gpu() {
     // End timer
     cudaDeviceSynchronize();
     timer().endCpuTimer();
-}
-
-/*
-    void __forward(data, res) inserts batched 'data' into MLP
-    and saves the output into 'res'. Assumes row-wise data alignment.
-*/
-void MLP_CUDA::__forward(double *data, double *res) {
-    // Start timer
-    timer().startCpuTimer();
-
-    int input_size  = params.input_size;
-    int output_size = params.output_size;
-    int batch_size  = params.batch_size;
-    int layer_count = params.layer_count;
-
-    // Copy batched input data into GPU
-    cudaMemcpy(d_a[0], data, batch_size * input_size * sizeof(double), cudaMemcpyHostToDevice);
-
-    // Push input vectors into MLP
-    for (int i = 0; i < layer_count; i++) {
-        int  input_dim  = (i > 0) ? params.layer_sizes[i-1] : input_size;
-        int  output_dim = params.layer_sizes[i];
-        bool apply_activation = (i < layer_count-1) ? true : false;
-
-        dim3 grid_dim(ceil(output_dim, TILE_SIZE), ceil(batch_size, TILE_SIZE), 1);
-        dim3 block_dim(TILE_SIZE, TILE_SIZE, 1);
-
-        // Perceptron Layer Kernel
-        PerceptronLayerKernel<<<grid_dim, block_dim>>> (
-            input_dim, output_dim, batch_size,
-            d_a[i], d_w_t[i], d_b[i], d_z[i], d_a[i+1], apply_activation
-        );
-        // cudaDeviceSynchronize(); // Wait for device(GPU) to finish the entire kernel.
-    }
-
-    // Convert the result into probability vectors using Softmax
-    int shared_mem_size = output_size * sizeof(double);
-    SoftmaxKernel<<<batch_size, output_size, shared_mem_size>>> (
-        d_z[layer_count-1], d_a[layer_count]
-    );
-    // cudaDeviceSynchronize();
-
-    // Get final results in device(GPU) to host(CPU)
-    cudaMemcpy(res, d_a[layer_count], batch_size * output_size * sizeof(double));
-
-    // End timer
-    timer().endCpuTimer();
-
-    // Copy intermediates for memory matching purpose 
-    // ※ This process is excluded for time measuring because 
-    //    copying intermediates into host is not necessary in real application of MLP.
-    cudaStream_t load_z, load_a;
-    cudaStreamCreate(&load_z); cudaStreamCreate(&load_a);
-    for (int i = 0; i < layer_count; i++) {
-        int input_dim  = (i > 0) ? params.layer_sizes[i-1] : params.input_size;
-        int output_dim = params.layer_sizes[i];
-
-        cudaMemcpyAsync(z[i], d_z[i], batch_size * output_dim * sizeof(double), 
-                        cudaMemcpyDeviceToHost, load_z);
-        cudaMemcpyAsync(a[i], d_a[i], batch_size * input_dim  * sizeof(double), 
-                        cudaMemcpyDeviceToHost, load_a);
-    }
-    cudaStreamDestroy(load_z); cudaStreamDestroy(load_a);
-
-    // Returns the result
-    return res;
 }
 
 void MLP_CUDA::__forward(vector<double*> &data, double *res, int start, int batch_size) {
