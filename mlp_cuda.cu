@@ -123,7 +123,7 @@ __global__ void PerceptronLayerKernel(int input_dim, int output_dim, int batch_s
     MatMul(inputs, weights, intermediates, batch_size, input_dim, output_dim);
     
     // Apply bias into intermediate result
-    BiasAdditionNaive(batch_size, output_dim, intermediates, bias, intermediates);
+    BiasAdditionNaive(batch_size, output_dim, intermediates, biases, intermediates);
         
     if (apply_activation) {
         // Apply activation function element-wise
@@ -245,7 +245,7 @@ void MLP_CUDA::allocate_gpu_memory() {
         int input_dim  = (i > 0) ? params.layer_sizes[i-1] : params.input_size;
         int output_dim = params.layer_sizes[i];
         
-        double *d_layer_w, *d_layer_w_t, *d_layer_b, *d_layer_z, *d_layer_a;
+        double *d_layer_w, *d_layer_w_t, *d_layer_b, *d_layer_z;
         
         cudaMalloc((void **) &d_layer_w,   output_dim * input_dim  * sizeof(double));
         cudaMalloc((void **) &d_layer_w_t, input_dim  * output_dim * sizeof(double));
@@ -334,7 +334,7 @@ void MLP_CUDA::__forward(vector<double*> &data, double *res, int start, int batc
     // cudaDeviceSynchronize();
 
     // Copy final result in device(GPU) to host(CPU)
-    cudaMemcpy(res, d_a[layer_count], batch_size * output_size * sizeof(double));
+    cudaMemcpy(res, d_a[layer_count], batch_size * output_size * sizeof(double), cudaMemcpyDeviceToHost);
 
     // End timer
     timer().endCpuTimer();
