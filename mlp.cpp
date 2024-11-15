@@ -95,13 +95,13 @@ void MLP::load_weights(string path) {
     infile.close();
 }
 
-static void MLP::match(double *res, double *ans, int output_size, int &val) {
+void MLP::match(double *res, double *ans, int output_size, int &val) {
     int pos1 = distance(res, max_element(res, res + output_size));
     int pos2 = distance(ans, max_element(ans, ans + output_size));
     val += (pos1 == pos2);
 }
 
-static void MLP::match(double *res, vector<double*> &ans, int output_size, int num_data, int &val) {
+void MLP::match(double *res, vector<double*> &ans, int output_size, int num_data, int &val) {
     for (int i = 0; i < num_data; i++)
         match(res + (i * output_size), ans[i], output_size, val);
 }
